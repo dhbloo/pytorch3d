@@ -22,6 +22,7 @@
 //            sorted in z-order, and (H, W) is the image size.
 //    points_idx: IntTensor of shape (N, points_per_pixel, H, W) giving the
 //            indices of the nearest points at each pixel, sorted in z-order.
+//    return_weights: bool of whether the weights for each points are returned.
 // Returns:
 //    weighted_fs: FloatTensor of shape (N, C, H, W) giving the accumulated
 //            feature for each point. Concretely, it gives:
@@ -32,7 +33,7 @@
 
 // CUDA declarations
 #ifdef WITH_CUDA
-torch::Tensor alphaCompositeCudaForward(
+std::tuple<torch::Tensor, torch::Tensor> alphaCompositeCudaForward(
     const torch::Tensor& features,
     const torch::Tensor& alphas,
     const torch::Tensor& points_idx);
@@ -45,7 +46,7 @@ std::tuple<torch::Tensor, torch::Tensor> alphaCompositeCudaBackward(
 #endif
 
 // C++ declarations
-torch::Tensor alphaCompositeCpuForward(
+std::tuple<torch::Tensor, torch::Tensor> alphaCompositeCpuForward(
     const torch::Tensor& features,
     const torch::Tensor& alphas,
     const torch::Tensor& points_idx);
@@ -56,7 +57,7 @@ std::tuple<torch::Tensor, torch::Tensor> alphaCompositeCpuBackward(
     const torch::Tensor& alphas,
     const torch::Tensor& points_idx);
 
-torch::Tensor alphaCompositeForward(
+std::tuple<torch::Tensor, torch::Tensor> alphaCompositeForward(
     torch::Tensor& features,
     torch::Tensor& alphas,
     torch::Tensor& points_idx) {

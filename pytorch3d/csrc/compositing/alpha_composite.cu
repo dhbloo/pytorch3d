@@ -24,6 +24,7 @@ __constant__ const float kEpsilon = 1e-9;
 __global__ void alphaCompositeCudaForwardKernel(
     // clang-format off
     at::PackedTensorAccessor64<float, 4, at::RestrictPtrTraits> result,
+    at::PackedTensorAccessor64<float, 4, at::RestrictPtrTraits> weights,
     const at::PackedTensorAccessor64<float, 2, at::RestrictPtrTraits> features,
     const at::PackedTensorAccessor64<float, 4, at::RestrictPtrTraits> alphas,
     const at::PackedTensorAccessor64<int64_t, 4, at::RestrictPtrTraits> points_idx) {
@@ -49,6 +50,7 @@ __global__ void alphaCompositeCudaForwardKernel(
     // alphacomposite the different values
     float cum_alpha = 1.;
     // Iterate through the closest K points for this pixel
+    float increment = 0.0f;
     for (int k = 0; k < points_idx.size(1); ++k) {
       int n_idx = points_idx[batch][k][j][i];
 
@@ -58,13 +60,16 @@ __global__ void alphaCompositeCudaForwardKernel(
       }
 
       float alpha = alphas[batch][k][j][i];
-      // TODO(gkioxari) It might be more efficient to have threads write in a
-      // local variable, and move atomicAdd outside of the loop such that
-      // atomicAdd is executed once per thread.
-      atomicAdd(
-          &result[batch][ch][j][i], features[ch][n_idx] * cum_alpha * alpha);
+      float w = cum_alpha * alpha;
+      increment += features[ch][n_idx] * w;
+      weights[batch][k][j][i] = w;
       cum_alpha = cum_alpha * (1 - alpha);
     }
+
+    // It might be more efficient to have threads write in a local
+    // variable, and move atomicAdd outside of the loop such that
+    // atomicAdd is executed once per thread.
+    atomicAdd(&result[batch][ch][j][i], increment);
   }
 }
 
@@ -142,7 +147,7 @@ __global__ void alphaCompositeCudaBackwardKernel(
   }
 }
 
-at::Tensor alphaCompositeCudaForward(
+std::tuple<at::Tensor, at::Tensor> alphaCompositeCudaForward(
     const at::Tensor& features,
     const at::Tensor& alphas,
     const at::Tensor& points_idx) {
@@ -159,14 +164,16 @@ at::Tensor alphaCompositeCudaForward(
 
   const int64_t batch_size = points_idx.size(0);
   const int64_t C = features.size(0);
+  const int64_t K = points_idx.size(1);
   const int64_t H = points_idx.size(2);
   const int64_t W = points_idx.size(3);
 
   auto result = at::zeros({batch_size, C, H, W}, features.options());
+  auto weights = at::zeros({batch_size, K, H, W}, features.options());
 
   if (result.numel() == 0) {
     AT_CUDA_CHECK(cudaGetLastError());
-    return result;
+    return std::make_tuple(result, weights);
   }
 
   const dim3 threadsPerBlock(64);
@@ -179,12 +186,13 @@ at::Tensor alphaCompositeCudaForward(
       // As we are using packed accessors here the tensors
       // do not need to be made contiguous.
       result.packed_accessor64<float, 4, at::RestrictPtrTraits>(),
+      weights.packed_accessor64<float, 4, at::RestrictPtrTraits>(),
       features.packed_accessor64<float, 2, at::RestrictPtrTraits>(),
       alphas.packed_accessor64<float, 4, at::RestrictPtrTraits>(),
       points_idx.packed_accessor64<int64_t, 4, at::RestrictPtrTraits>());
   // clang-format on
   AT_CUDA_CHECK(cudaGetLastError());
-  return result;
+  return std::make_tuple(result, weights);
 }
 
 std::tuple<at::Tensor, at::Tensor> alphaCompositeCudaBackward(

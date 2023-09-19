@@ -43,13 +43,14 @@ class _CompositeAlphaPoints(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, features, alphas, points_idx):
-        pt_cld = _C.accum_alphacomposite(features, alphas, points_idx)
+        pt_cld, weights = _C.accum_alphacomposite(features, alphas, points_idx)
 
+        ctx.mark_non_differentiable(weights)
         ctx.save_for_backward(features.clone(), alphas.clone(), points_idx.clone())
-        return pt_cld
+        return pt_cld, weights
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, grad_output, grad_weights):
         grad_features = None
         grad_alphas = None
         grad_points_idx = None
@@ -89,6 +90,8 @@ def alpha_composite(pointsidx, alphas, pt_clds) -> torch.Tensor:
     Returns:
         Combined features: Tensor of shape (N, C, image_size, image_size)
             giving the accumulated features at each point.
+        Weights: Tensor of shape (N, points_per_pixel, image_size, image_size)
+            giving the weights of features at each point.
     """
     return _CompositeAlphaPoints.apply(pt_clds, alphas, pointsidx)
 

@@ -44,7 +44,7 @@ class PointsRenderer(nn.Module):
         self.compositor = self.compositor.to(device)
         return self
 
-    def forward(self, point_clouds, **kwargs) -> torch.Tensor:
+    def forward(self, point_clouds, **kwargs) -> tuple[torch.Tensor, torch.Tensor]:
         fragments = self.rasterizer(point_clouds, **kwargs)
 
         # Construct weights based on the distance of a point to the true point.
@@ -54,7 +54,7 @@ class PointsRenderer(nn.Module):
 
         dists2 = fragments.dists.permute(0, 3, 1, 2)
         weights = 1 - dists2 / (r * r)
-        images = self.compositor(
+        images, weights = self.compositor(
             fragments.idx.long().permute(0, 3, 1, 2),
             weights,
             point_clouds.features_packed().permute(1, 0),
@@ -63,5 +63,6 @@ class PointsRenderer(nn.Module):
 
         # permute so image comes at the end
         images = images.permute(0, 2, 3, 1)
+        weights = images.permute(0, 2, 3, 1)
 
-        return images
+        return images, weights

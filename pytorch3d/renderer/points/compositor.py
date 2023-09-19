@@ -30,13 +30,14 @@ class AlphaCompositor(nn.Module):
 
     def forward(self, fragments, alphas, ptclds, **kwargs) -> torch.Tensor:
         background_color = kwargs.get("background_color", self.background_color)
-        images = alpha_composite(fragments, alphas, ptclds)
+        images, weights = alpha_composite(fragments, alphas, ptclds)
 
         # images are of shape (N, C, H, W)
+        # weights are of shape (N, K, H, W), K is the number of point per bin
         # check for background color & feature size C (C=4 indicates rgba)
         if background_color is not None:
             return _add_background_color_to_images(fragments, images, background_color)
-        return images
+        return images, weights
 
 
 class NormWeightedCompositor(nn.Module):
@@ -52,13 +53,13 @@ class NormWeightedCompositor(nn.Module):
 
     def forward(self, fragments, alphas, ptclds, **kwargs) -> torch.Tensor:
         background_color = kwargs.get("background_color", self.background_color)
-        images = norm_weighted_sum(fragments, alphas, ptclds)
+        images, weights = norm_weighted_sum(fragments, alphas, ptclds)
 
         # images are of shape (N, C, H, W)
         # check for background color & feature size C (C=4 indicates rgba)
         if background_color is not None:
             return _add_background_color_to_images(fragments, images, background_color)
-        return images
+        return images, weights
 
 
 def _add_background_color_to_images(pix_idxs, images, background_color):
